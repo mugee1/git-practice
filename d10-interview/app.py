@@ -70,6 +70,7 @@ def start_screen():
         questions=questions,
         q_index=0,
         follow_ups_used=0,
+        total_follow_ups=0,
         understanding=None,
         evaluation=None,
         retries={},  # 질문 번호 → 다시 쓴 답과 점수
@@ -97,7 +98,9 @@ def handle_answer(answer: str) -> bool:
         return True
 
     history = ss.messages + [{"role": "user", "content": answer}]
-    turn_input = coach.build_turn_input(ss.questions, ss.q_index, ss.follow_ups_used, history)
+    turn_input = coach.build_turn_input(
+        ss.questions, ss.q_index, ss.follow_ups_used, ss.total_follow_ups, history
+    )
     with st.spinner("면접관이 답변을 보고 있어요..."):
         try:
             result = ask_json(ss.instructions, turn_input, INTERVIEWER_SCHEMA, "interviewer")
@@ -109,12 +112,13 @@ def handle_answer(answer: str) -> bool:
     ss.messages.append({"role": "user", "content": answer, "no": ss.q_index + 1})
     ss.understanding = coach.clamp_understanding(result.get("understanding"))
 
-    if coach.can_follow_up(result.get("follow_up"), ss.follow_ups_used):
+    if coach.can_follow_up(result.get("follow_up"), ss.follow_ups_used, ss.total_follow_ups):
         ss.follow_ups_used += 1
+        ss.total_follow_ups += 1
         ss.messages.append({"role": "assistant", "content": result.get("reply", ""), "no": ss.q_index + 1})
         return True
 
-    # 꼬리 질문이 없거나 이미 1번 했으면 코드가 다음 메인 질문으로 넘깁니다
+    # 꼬리 질문이 없거나, 이 질문에서 1번 · 면접 전체에서 3번을 채웠으면 코드가 다음 메인 질문으로 넘깁니다
     ss.q_index += 1
     ss.follow_ups_used = 0
     if ss.q_index >= coach.TOTAL_QUESTIONS:

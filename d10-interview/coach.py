@@ -9,7 +9,8 @@ import pandas as pd
 from prompts import CONTEXT, EVALUATOR, INTERVIEWER, PERSONAS, RETRY
 
 TOTAL_QUESTIONS = 5
-MAX_FOLLOW_UPS = 1
+MAX_FOLLOW_UPS = 1        # 질문 하나당
+MAX_TOTAL_FOLLOW_UPS = 3  # 면접 전체
 UNDERSTANDING_MIN, UNDERSTANDING_MAX = 0, 100
 PANEL_MIN, PANEL_MAX = 0, 10          # 위원 점수
 CRITERION_MIN, CRITERION_MAX = 0, 5   # 기준 점수
@@ -67,7 +68,7 @@ def build_eval_instructions(job: str, company: str, experience: str) -> str:
 
 
 def build_turn_input(questions: list[dict], index: int, follow_ups_used: int,
-                     messages: list[dict]) -> str:
+                     total_follow_ups: int, messages: list[dict]) -> str:
     """면접관에게 넘길 이번 차례의 상태(데이터)를 JSON 문자열로 만듭니다."""
     next_question = questions[index + 1]["질문"] if index + 1 < len(questions) else None
     return json.dumps({
@@ -75,15 +76,18 @@ def build_turn_input(questions: list[dict], index: int, follow_ups_used: int,
         "현재 메인 질문": questions[index]["질문"],
         "보는 점": questions[index]["보는 점"],
         "이 질문에서 한 꼬리질문 수": follow_ups_used,
-        "꼬리질문 가능": follow_ups_used < MAX_FOLLOW_UPS,
+        "면접 전체에서 남은 꼬리질문 수": max(0, MAX_TOTAL_FOLLOW_UPS - total_follow_ups),
+        "꼬리질문 가능": can_follow_up(True, follow_ups_used, total_follow_ups),
         "다음 메인 질문": next_question,
         "대화 기록": messages,
     }, ensure_ascii=False)
 
 
-def can_follow_up(ai_wants_follow_up: bool, follow_ups_used: int) -> bool:
-    """AI 가 더 묻자고 해도 질문당 MAX_FOLLOW_UPS 를 넘으면 코드가 막습니다."""
-    return bool(ai_wants_follow_up) and follow_ups_used < MAX_FOLLOW_UPS
+def can_follow_up(ai_wants_follow_up: bool, follow_ups_used: int, total_follow_ups: int) -> bool:
+    """AI 가 더 묻자고 해도 질문당 MAX_FOLLOW_UPS, 전체 MAX_TOTAL_FOLLOW_UPS 를 넘으면 코드가 막습니다."""
+    return (bool(ai_wants_follow_up)
+            and follow_ups_used < MAX_FOLLOW_UPS
+            and total_follow_ups < MAX_TOTAL_FOLLOW_UPS)
 
 
 def clamp(value, low: int, high: int) -> int:
